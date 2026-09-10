@@ -1,0 +1,28 @@
+name: Gradle Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "8.0.312"
+          architecture: x64
+      - name: Build with Gradle
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build -iS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Package
+          path: build/libs

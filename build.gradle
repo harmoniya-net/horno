@@ -1,0 +1,121 @@
+import java.text.SimpleDateFormat
+
+plugins {
+    id "java"
+    id "eclipse"
+    id "com.github.johnrengelman.shadow" version "7.1.2"
+}
+
+sourceCompatibility = targetCompatibility = 1.8
+compileJava {
+    sourceCompatibility = targetCompatibility = 1.8
+}
+
+version = "${-> resolveVersion()}"
+group = "net.harmoniya"
+archivesBaseName = rootProject.name
+
+configurations {
+    // The Java 9+ half of ModuleUtil, inserted under META-INF/versions/9 rather
+    // than merged — it deliberately shares a class name with the Java 8 one.
+    multirelease {
+        implementation.extendsFrom multirelease
+    }
+    // What gets merged into the jar, relocated. Kept apart from `multirelease`
+    // so the two never meet: shading jigsaw at the root would overwrite the
+    // Java 8 ModuleUtil with a copy that cannot load on 8.
+    shade {
+        implementation.extendsFrom shade
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Horno compiles against nothing but the JDK and nanojson. It used to
+    // compile against `net.minecraftforge:installer` and call into it; the
+    // install profile is a published format and the processors are ordinary
+    // executable jars, so it reads the one and runs the others instead. Pinning
+    // a build to one installer version while running against seven years of
+    // them was how `NoSuchMethodError` kept arriving.
+    shade "com.grack:nanojson:${nanojson_version}"
+
+    multirelease project(":jigsaw")
+
+    testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
+}
+
+test {
+    useJUnitPlatform()
+}
+
+java {
+    withSourcesJar()
+}
+
+// One jar is published, and it is the shaded one. A second, thin artifact under
+// a classifier would only be a second thing a document could accidentally name.
+jar {
+    enabled = false
+}
+
+shadowJar {
+    archiveClassifier = ""
+    configurations = [project.configurations.shade]
+
+    // Relocated, not merged as-is. An unrelocated `com.grack.nanojson` on the
+    // game's classpath is the same class of bug that made all of this necessary
+    // — the NeoForge installer's shaded Gson shadowing the game's.
+    relocate "com.grack.nanojson", "net.harmoniya.horno.shaded.nanojson"
+    // The pom of a library that is no longer at the coordinate it names.
+    exclude "META-INF/maven/**"
+
+    manifest.attributes([
+        "Specification-Title": "${project.name}",
+        "Specification-Vendor": "harmoniya",
+        "Specification-Version": "${project.version}".split("-")[0],
+        "Implementation-Title": "${project.name}",
+        "Implementation-Version": "${project.version}",
+        "Implementation-Vendor": "harmoniya",
+        "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+        // `java -jar horno.jar install …` — the standalone half.
+        "Main-Class": "net.harmoniya.horno.Main",
+        "Automatic-Module-Name": "${project.group}.${project.archivesBaseName}".toString().toLowerCase(),
+        "Multi-Release": "true",
+        "GitCommit": String.valueOf(System.getenv("GITHUB_SHA"))
+    ])
+
+    // `project.configurations`, not `configurations` — inside a ShadowJar the
+    // bare name is the task's own list of configurations to merge, which was
+    // just set to `[shade]` two lines up.
+    into "META-INF/versions/9", {
+        from project.configurations.multirelease.files.collect {
+            zipTree(it)
+        }
+        exclude "META-INF/**"
+    }
+}
+
+// `build` has to produce the jar it publishes. The shadow plugin does not wire
+// this itself, and a green build with an empty `libs/` is a bad way to find out.
+assemble.dependsOn shadowJar
+
+// The jar is pinned by URL + sha1 from a release asset, so the version has to
+// be the tag that produced it — a date suffix would name a build no tag points
+// at. Off a tag, the date suffix still keeps CI builds distinguishable.
+//
+// A leading `v` is dropped: this version becomes a maven coordinate and a
+// filename, where `v0.1.0` reads as a typo rather than a version.
+String resolveVersion() {
+    if (System.getenv("GITHUB_REF_TYPE") == "tag") {
+        String tag = System.getenv("GITHUB_REF_NAME")
+        if (tag != null && !tag.isEmpty()) return tag.replaceFirst(/^v(?=\d)/, "")
+    }
+
+    if (System.getenv("GITHUB_ACTIONS") == "true")
+        return "${horno_version}" + new SimpleDateFormat("-yyyy-MM-dd").format(new Date())
+
+    return "${horno_version}-LOCAL"
+}
