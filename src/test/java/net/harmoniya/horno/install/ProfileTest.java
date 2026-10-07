@@ -92,6 +92,17 @@ class ProfileTest {
         }
     }
 
+    /** Recognised by its task, not by its jar: `installertools` runs half the profile. */
+    @Test
+    void onlyTheRealmsTaskIsDeclined(@TempDir Path dir) throws Exception {
+        String json = PROFILE.replace("\"--task\",\"EXTRACT_FILES\"", "\"--task\",\"DEOBF_REALMS\",\"--mc\",\"{MINECRAFT_JAR}\"");
+        try (ZipFile jar = installer(dir, json)) {
+            Profile profile = Profile.read(jar, "client");
+            assertTrue(Installer.needsLauncherLayout(profile.processors.get(0)));
+            assertFalse(Installer.needsLauncherLayout(profile.processors.get(1)));
+        }
+    }
+
     @Test
     void refusesAProfileWithNoProcessors(@TempDir Path dir) throws Exception {
         String json = PROFILE.replace("\"processors\":", "\"absent\":");

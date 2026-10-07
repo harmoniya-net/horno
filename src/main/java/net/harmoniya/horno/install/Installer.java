@@ -122,6 +122,10 @@ public final class Installer implements Closeable {
                 if (!processor.runsOn(SIDE)) {
                     continue;
                 }
+                if (needsLauncherLayout(processor)) {
+                    System.out.println("[horno] " + name(processor) + ": skipping DEOBF_REALMS, which only runs inside the official launcher's directories; Realms will not open in this install");
+                    continue;
+                }
                 Map<String, String> outputs = resolveOutputs(processor, data, libraryDir);
                 if (satisfied(processor, outputs, cacheable)) {
                     System.out.println("[horno] " + name(processor) + ": up to date");
@@ -133,6 +137,26 @@ public final class Installer implements Closeable {
         } finally {
             deleteTree(temp);
         }
+    }
+
+    /**
+     * The one processor horno declines to run.
+     *
+     * <p>{@code DEOBF_REALMS} — Forge 1.14.3 and its neighbours — is handed the
+     * client jar and works everything else out from where that jar sits: the
+     * version JSON beside it under the same name, {@code libraries/} three
+     * directories up. That is the official launcher's layout and nobody
+     * else's, so anywhere else it fails, and it failed here on a first launch
+     * only: it declares no outputs, so the second launch found every file the
+     * profile names already present and took the install for finished.
+     *
+     * <p>What it prepares is the Realms client for a 2019 release, and Realms
+     * serves the current release only. Skipping it is the honest version of
+     * what the second launch was already doing by accident.
+     */
+    static boolean needsLauncherLayout(Profile.Processor processor) {
+        int task = processor.args.indexOf("--task");
+        return task >= 0 && task + 1 < processor.args.size() && "DEOBF_REALMS".equals(processor.args.get(task + 1));
     }
 
     // ── data ────────────────────────────────────────────────────────────────
