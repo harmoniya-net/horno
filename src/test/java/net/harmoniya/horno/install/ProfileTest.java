@@ -72,14 +72,21 @@ class ProfileTest {
     }
 
     /**
-     * Spec 0 is the 1.6.1-1.12.2 shape, with an inline `versionInfo` and no
-     * processors at all. Nothing routes it here — those documents name no
-     * installer — so meeting one means something upstream is wrong, and saying
-     * so beats installing nothing and reporting success.
+     * Forge 1.13.2-1.16.5. The same language as spec 1, minus `sides` — these
+     * were refused once, on the belief that only spec 1 had processors, and
+     * every Forge build in that range failed to install.
      */
     @Test
-    void refusesAProfileSpecItDoesNotRead(@TempDir Path dir) throws Exception {
+    void readsSpecZeroTheSameWay(@TempDir Path dir) throws Exception {
         String json = PROFILE.replace("\"spec\":1", "\"spec\":0");
+        try (ZipFile jar = installer(dir, json)) {
+            assertFalse(Profile.read(jar, "client").processors.isEmpty());
+        }
+    }
+
+    @Test
+    void refusesAProfileSpecItDoesNotRead(@TempDir Path dir) throws Exception {
+        String json = PROFILE.replace("\"spec\":1", "\"spec\":2");
         try (ZipFile jar = installer(dir, json)) {
             assertThrows(IllegalArgumentException.class, () -> Profile.read(jar, "client"));
         }

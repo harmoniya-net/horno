@@ -212,7 +212,7 @@ NeoForge 26.x.
 
 ### What the driver does
 
-1. Read the profile (spec 1 only — the eras below it name no installer) and the
+1. Read the profile (specs 0 and 1 — 1.13.2-1.16.5 and 1.17+, one language) and the
    version JSON it points at.
 2. Put the tools on disk: what is already correct is left alone, then the
    installer's own embedded `maven/` tree, then the network. That middle step is

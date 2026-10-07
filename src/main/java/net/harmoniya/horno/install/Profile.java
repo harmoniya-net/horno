@@ -22,9 +22,12 @@ import com.grack.nanojson.JsonParserException;
  * which is what makes the shaded Gson it carries — the one that shadowed the
  * game's and killed NeoForge 26.x — permanently harmless.
  *
- * <p>Only spec 1 is read, because only spec 1 has processors. The eras below it
- * (1.6.1-1.12.2 with an inline {@code versionInfo}, and the jar mods before
- * that) never reach this code: their documents name no installer at all.
+ * <p>Specs 0 and 1 are read, and they are one language. Forge wrote spec 0
+ * from 1.13.2 through 1.16.5 and spec 1 from 1.17; what spec 1 added is a
+ * processor's {@code sides} and a few tokens, and a profile that uses neither
+ * is read the same way. The 1.6.1-1.12.2 profile is a different document — an
+ * inline {@code versionInfo}, no {@code spec} and no processors — and is told
+ * apart by that, not by a number: it is refused for having nothing to run.
  */
 public final class Profile {
     /** One entry of the profile's {@code libraries} — a tool the processors run on. */
@@ -87,8 +90,8 @@ public final class Profile {
         JsonObject root = JsonParser.object().from(entry(installer, "install_profile.json"));
 
         int spec = root.getInt("spec", 0);
-        if (spec != 1) {
-            throw new IllegalArgumentException("Unsupported install profile spec " + spec + "; horno reads spec 1");
+        if (spec != 0 && spec != 1) {
+            throw new IllegalArgumentException("Unsupported install profile spec " + spec + "; horno reads specs 0 and 1");
         }
 
         Map<String, String> data = new LinkedHashMap<>();
