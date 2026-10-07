@@ -10,6 +10,7 @@ import java.lang.module.ModuleReference;
 import java.lang.module.ResolvedModule;
 import java.lang.reflect.Field;
 import java.net.URL;
+import java.net.URLStreamHandler;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -207,5 +208,40 @@ public class ModuleUtil {
             TypeToAdd.OPENS.implAddMH.invokeWithArguments(mainClass.getModule(), mainClass.getPackageName(), ModuleUtil.class.getModule());
         }
         return mainClass;
+    }
+
+    /**
+     * Settle which handler serves {@code http:} and {@code https:} before any
+     * URL is built: the JDK's own, which is the one it would have picked.
+     *
+     * <p>The first URL of a protocol makes the JVM look for a
+     * {@code URLStreamHandlerProvider} through the system class loader, and
+     * finding one means loading its class. Forge 1.20.2's {@code securemodules}
+     * registers one, in a package that {@link #addModules} is about to define
+     * as a module. Once a class of it has been loaded off {@code -cp} the
+     * package belongs to the unnamed module, the module cannot be defined, and
+     * the launch dies with "Module net.minecraftforge.bootstrap not known to
+     * this layer". It only happened on a first launch, because only then does
+     * horno fetch the installer before the modules are set up.
+     *
+     * <p>Horno cannot simply avoid building such a URL. Opening a TLS
+     * connection is enough: {@code javax.crypto.JceSecurity} builds
+     * {@code http://null.oracle.com/} in its static initialiser. So the answer
+     * is put where the lookup would have cached it. A provider is still asked
+     * about every other protocol, which is all one is for.
+     */
+    @SuppressWarnings("unchecked")
+    public static void claimUrlHandlers() {
+        try {
+            Map<String, URLStreamHandler> handlers = (Map<String, URLStreamHandler>) IMPL_LOOKUP.findStaticGetter(URL.class, "handlers", java.util.Hashtable.class).invoke();
+            for (String protocol : new String[] {"http", "https"}) {
+                Class<?> handler = Class.forName("sun.net.www.protocol." + protocol + ".Handler");
+                handlers.putIfAbsent(protocol, (URLStreamHandler) IMPL_LOOKUP.findConstructor(handler, MethodType.methodType(void.class)).invoke());
+            }
+        } catch (Throwable t) {
+            // A JDK that keeps this elsewhere. Every loader but that one build of
+            // Forge launches without it, so it is not worth refusing to start over.
+            System.err.println("[horno] could not settle the URL handlers ahead of the module path: " + t);
+        }
     }
 }

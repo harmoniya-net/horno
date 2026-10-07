@@ -37,4 +37,8 @@ public class ModuleUtil {
         // PlatformClassLoader does not exist in Java 8
         return null;
     }
+
+    public static void claimUrlHandlers() {
+        // nothing to do with Java 8: there are no modules for a stray class load to spoil
+    }
 }

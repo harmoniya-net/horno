@@ -65,6 +65,8 @@ public class Main {
 
     public static void main(String[] args) throws Throwable {
         Flags.warnOnContradictions();
+        // Before the first request, and so before anything else here.
+        ModuleUtil.claimUrlHandlers();
 
         if (args.length > 0 && ("--help".equals(args[0]) || "-h".equals(args[0]))) {
             System.out.print(USAGE);
