@@ -98,5 +98,3 @@ asset mapper on the opys side. The game runs; it has no sounds.
   check is the next release. If it fails the release still stands; the nightly
   run picks the new jar up, or `gh workflow run pages.yml -R harmoniya-net/metadata`.
 - **`actions/setup-java@v4` is deprecated** in both workflows; move to `v5`.
-- **`fuckforge.harmoniya.net` still resolves.** Nothing of ours names it any
-  more. Drop the DNS record, or decide what it should point at.
