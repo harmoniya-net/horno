@@ -193,12 +193,69 @@ public class ModuleUtil {
         }
     }
 
+    /**
+     * Put what the processors produced on the class path, ahead of everything
+     * already there.
+     *
+     * <p>Ahead, because that is where the installer's own document lists them:
+     * the patched client is its second library, and the vanilla jar comes last.
+     * These files did not exist when the JVM started, so they could not be on
+     * {@code -cp}, and appending them puts the vanilla jar first instead. Forge
+     * for Minecraft 26.1 finds "the Minecraft jar" by asking the class loader
+     * who has {@code net/minecraft/client/Minecraft.class}. Since 26.1 ships
+     * unobfuscated that is true of the vanilla jar too, the first answer wins,
+     * and Forge then crashes transforming classes nobody patched ("Field fluid
+     * is not private"). Before 26.1 the vanilla names were obfuscated and only
+     * the patched jar matched; from 26.1.1 Forge looks for a marker file.
+     *
+     * <p>{@code URLClassPath} can only append, so the front is reached through
+     * its fields. If a JDK has moved them the jars are appended as before,
+     * which is right for every build but those.
+     */
     public static void setupClassPath(Path libraryDir, List<String> paths) throws Throwable {
         Class<?> urlClassPathClass = Class.forName("jdk.internal.loader.URLClassPath");
         Object ucp = IMPL_LOOKUP.findGetter(Class.forName("jdk.internal.loader.BuiltinClassLoader"), "ucp", urlClassPathClass).invokeWithArguments(ClassLoader.getSystemClassLoader());
-        MethodHandle addURLMH = IMPL_LOOKUP.findVirtual(urlClassPathClass, "addURL", MethodType.methodType(void.class, URL.class));
+        List<URL> urls = new ArrayList<>();
         for (String path : paths) {
-            addURLMH.invokeWithArguments(ucp, libraryDir.resolve(path).toUri().toURL());
+            urls.add(libraryDir.resolve(path).toUri().toURL());
+        }
+        try {
+            prepend(urlClassPathClass, ucp, urls);
+        } catch (Throwable t) {
+            System.err.println("[horno] could not put the produced libraries first on the class path, appending them: " + t);
+            MethodHandle addURLMH = IMPL_LOOKUP.findVirtual(urlClassPathClass, "addURL", MethodType.methodType(void.class, URL.class));
+            for (URL url : urls) {
+                addURLMH.invokeWithArguments(ucp, url);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void prepend(Class<?> urlClassPathClass, Object ucp, List<URL> urls) throws Throwable {
+        Class<?> loaderClass = Class.forName("jdk.internal.loader.URLClassPath$Loader");
+        List<URL> path = (List<URL>) IMPL_LOOKUP.findGetter(urlClassPathClass, "path", ArrayList.class).invoke(ucp);
+        List<Object> loaders = (List<Object>) IMPL_LOOKUP.findGetter(urlClassPathClass, "loaders", ArrayList.class).invoke(ucp);
+        Map<String, Object> opened = (Map<String, Object>) IMPL_LOOKUP.findGetter(urlClassPathClass, "lmap", HashMap.class).invoke(ucp);
+        MethodHandle getLoader = IMPL_LOOKUP.findVirtual(urlClassPathClass, "getLoader", MethodType.methodType(loaderClass, URL.class));
+        MethodHandle key = IMPL_LOOKUP.findStatic(Class.forName("sun.net.util.URLUtil"), "urlNoFragString", MethodType.methodType(String.class, URL.class));
+
+        // Everything is resolved before anything is changed, so a failure
+        // leaves the class path as it was for the caller to append to.
+        List<URL> fresh = new ArrayList<>();
+        List<Object> freshLoaders = new ArrayList<>();
+        synchronized (ucp) {
+            for (URL url : urls) {
+                if (path.contains(url) || fresh.contains(url)) {
+                    continue;
+                }
+                fresh.add(url);
+                freshLoaders.add(getLoader.invoke(ucp, url));
+            }
+            for (int i = 0; i < fresh.size(); i++) {
+                loaders.add(i, freshLoaders.get(i));
+                path.add(i, fresh.get(i));
+                opened.put((String) key.invoke(fresh.get(i)), freshLoaders.get(i));
+            }
         }
     }
 
