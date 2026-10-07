@@ -90,3 +90,13 @@ Both log `FileNotFoundException: http://s3.amazonaws.com/MinecraftResources/`.
 That is vanilla's pre-1.6 sound and music downloader against a bucket Mojang
 retired, not Forge and not horno — the same era gap as the missing `resources/`
 asset mapper on the opys side. The game runs; it has no sounds.
+
+## Release plumbing nobody has watched work
+
+- **The dispatch into `metadata` is untested.** `METADATA_DISPATCH_TOKEN` was
+  set after `0.1.0` shipped, and the step only runs on a tag, so the first real
+  check is the next release. If it fails the release still stands; the nightly
+  run picks the new jar up, or `gh workflow run pages.yml -R harmoniya-net/metadata`.
+- **`actions/setup-java@v4` is deprecated** in both workflows; move to `v5`.
+- **`fuckforge.harmoniya.net` still resolves.** Nothing of ours names it any
+  more. Drop the DNS record, or decide what it should point at.
