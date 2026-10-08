@@ -26,3 +26,28 @@ jobs:
         with:
           name: Package
           path: build/libs
+
+  # The jar reaches into the JDK for three things nothing promises to keep
+  # (see jdk-probe/JdkInternals.java). Two of them fail soft, so a JDK that
+  # moved a field would otherwise be found by one Forge build crashing.
+  # `continue-on-error` is not set: a red cell here is the early warning.
+  jdk-internals:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every LTS a modular loader runs on, and the newest release.
+        java: ["17", "21", "25", "27"]
+    name: JDK internals on Java ${{ matrix.java }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Package
+          path: build/libs
+      - uses: actions/setup-java@v5
+        with:
+          distribution: "temurin"
+          java-version: ${{ matrix.java }}
+      - run: jdk-probe/run.sh "$(ls build/libs/horno-*.jar | grep -v sources)"

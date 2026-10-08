@@ -235,6 +235,22 @@ The profile's server half is read and ignored. `MC_UNPACKED` is written by a
 server-side processor and never exists in a client install, which is exactly the
 trap in judging "already built" from the whole data map.
 
+## JDK internals
+
+On Java 9 and later horno reaches into the JDK for things nothing promises to
+keep: adding modules, exports and opens to a JVM that has already started,
+putting the libraries the processors produced *first* on the class path
+(Forge for Minecraft 26.1 needs them there), and settling the `http` / `https`
+URL handlers before any provider is asked (Forge for Minecraft 1.20.2 fails
+its first launch otherwise). The last two fail soft — horno prints which
+version is affected and carries on — so nothing else would say that a new JDK
+had moved a field.
+
+`jdk-probe/run.sh <horno jar>` asks the JDK on `PATH` (or `JAVA_HOME`) the
+same questions those builds do and exits non-zero on a wrong answer. CI runs
+it against the built jar on every LTS a modular loader uses and on the newest
+release.
+
 ## Custom detection
 
 Horno provides an [`IFileDetector`](src/main/java/net/harmoniya/horno/detector/IFileDetector.java)

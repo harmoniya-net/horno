@@ -222,7 +222,10 @@ public class ModuleUtil {
         try {
             prepend(urlClassPathClass, ucp, urls);
         } catch (Throwable t) {
-            System.err.println("[horno] could not put the produced libraries first on the class path, appending them: " + t);
+            System.err.println("[horno] Java " + Runtime.version() + " keeps its class path somewhere horno does not know, so the"
+                + " libraries the installer produced go last on it instead of first. Forge for Minecraft 26.1 crashes on start"
+                + " like this (\"Field fluid is not private\"); every other version is unaffected. If this is that one, use an"
+                + " older Java, and either way please report it: https://github.com/harmoniya-net/horno/issues\n[horno]   " + t);
             MethodHandle addURLMH = IMPL_LOOKUP.findVirtual(urlClassPathClass, "addURL", MethodType.methodType(void.class, URL.class));
             for (URL url : urls) {
                 addURLMH.invokeWithArguments(ucp, url);
@@ -298,7 +301,10 @@ public class ModuleUtil {
         } catch (Throwable t) {
             // A JDK that keeps this elsewhere. Every loader but that one build of
             // Forge launches without it, so it is not worth refusing to start over.
-            System.err.println("[horno] could not settle the URL handlers ahead of the module path: " + t);
+            System.err.println("[horno] Java " + Runtime.version() + " keeps its URL handlers somewhere horno does not know. Forge for"
+                + " Minecraft 1.20.2 fails its first launch like this (\"Module net.minecraftforge.bootstrap not known to this"
+                + " layer\") and starts on the second; every other version is unaffected. Please report it:"
+                + " https://github.com/harmoniya-net/horno/issues\n[horno]   " + t);
         }
     }
 }
