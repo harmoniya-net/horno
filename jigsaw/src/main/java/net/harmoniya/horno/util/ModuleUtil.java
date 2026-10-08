@@ -209,8 +209,9 @@ public class ModuleUtil {
      * the patched jar matched; from 26.1.1 Forge looks for a marker file.
      *
      * <p>{@code URLClassPath} can only append, so the front is reached through
-     * its fields. If a JDK has moved them the jars are appended as before,
-     * which is right for every build but those.
+     * its fields, which Java 27 has already rearranged once. If a JDK has moved
+     * them again the jars are appended as before, which is right for every build
+     * but those.
      */
     public static void setupClassPath(Path libraryDir, List<String> paths) throws Throwable {
         Class<?> urlClassPathClass = Class.forName("jdk.internal.loader.URLClassPath");
@@ -236,7 +237,19 @@ public class ModuleUtil {
     @SuppressWarnings("unchecked")
     private static void prepend(Class<?> urlClassPathClass, Object ucp, List<URL> urls) throws Throwable {
         Class<?> loaderClass = Class.forName("jdk.internal.loader.URLClassPath$Loader");
-        List<URL> path = (List<URL>) IMPL_LOOKUP.findGetter(urlClassPathClass, "path", ArrayList.class).invoke(ucp);
+        // The list of every URL on the path. Java 27 renamed it and started
+        // walking it by index instead of draining a second queue, so there the
+        // index has to move along with what is put in front of it.
+        List<URL> path;
+        boolean indexed = false;
+        try {
+            path = (List<URL>) IMPL_LOOKUP.findGetter(urlClassPathClass, "path", ArrayList.class).invoke(ucp);
+        } catch (NoSuchFieldException e) {
+            path = (List<URL>) IMPL_LOOKUP.findGetter(urlClassPathClass, "searchPath", ArrayList.class).invoke(ucp);
+            indexed = true;
+        }
+        MethodHandle nextGetter = indexed ? IMPL_LOOKUP.findGetter(urlClassPathClass, "nextURL", int.class) : null;
+        MethodHandle nextSetter = indexed ? IMPL_LOOKUP.findSetter(urlClassPathClass, "nextURL", int.class) : null;
         List<Object> loaders = (List<Object>) IMPL_LOOKUP.findGetter(urlClassPathClass, "loaders", ArrayList.class).invoke(ucp);
         Map<String, Object> opened = (Map<String, Object>) IMPL_LOOKUP.findGetter(urlClassPathClass, "lmap", HashMap.class).invoke(ucp);
         MethodHandle getLoader = IMPL_LOOKUP.findVirtual(urlClassPathClass, "getLoader", MethodType.methodType(loaderClass, URL.class));
@@ -246,18 +259,25 @@ public class ModuleUtil {
         // leaves the class path as it was for the caller to append to.
         List<URL> fresh = new ArrayList<>();
         List<Object> freshLoaders = new ArrayList<>();
+        // Both monitors, in the order the JDK takes them: its own lookups hold
+        // the class path and then, from Java 27, the list.
         synchronized (ucp) {
-            for (URL url : urls) {
-                if (path.contains(url) || fresh.contains(url)) {
-                    continue;
+            synchronized (path) {
+                for (URL url : urls) {
+                    if (path.contains(url) || fresh.contains(url)) {
+                        continue;
+                    }
+                    fresh.add(url);
+                    freshLoaders.add(getLoader.invoke(ucp, url));
                 }
-                fresh.add(url);
-                freshLoaders.add(getLoader.invoke(ucp, url));
-            }
-            for (int i = 0; i < fresh.size(); i++) {
-                loaders.add(i, freshLoaders.get(i));
-                path.add(i, fresh.get(i));
-                opened.put((String) key.invoke(fresh.get(i)), freshLoaders.get(i));
+                for (int i = 0; i < fresh.size(); i++) {
+                    loaders.add(i, freshLoaders.get(i));
+                    path.add(i, fresh.get(i));
+                    opened.put((String) key.invoke(fresh.get(i)), freshLoaders.get(i));
+                }
+                if (indexed) {
+                    nextSetter.invoke(ucp, (int) nextGetter.invoke(ucp) + fresh.size());
+                }
             }
         }
     }
