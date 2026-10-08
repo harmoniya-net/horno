@@ -57,14 +57,30 @@ public final class JarMod {
             supplied = Collections.singletonMap(FmlLibraryList.ENTRY, rewritten(list, libraries));
         }
 
+        // And the one file FML 5 wants that its list does not mention.
+        byte[] version = entryOf(overlays, FmlDeobfuscation.ENTRY);
+        if (version != null) {
+            java.util.Properties properties = new java.util.Properties();
+            properties.load(new java.io.ByteArrayInputStream(version));
+            FmlLibraries.Library data = FmlDeobfuscation.resolve(properties);
+            if (data != null) {
+                place(Collections.singletonList(data), gameDir.resolve("lib"));
+            }
+        }
+
         return ClientPatcher.patch(client, overlays, output, supplied);
     }
 
     /** The class carrying FML's library list, or null when this build ships no FML. */
     private static byte[] fmlLibraryList(List<Path> overlays) throws IOException {
+        return entryOf(overlays, FmlLibraryList.ENTRY);
+    }
+
+    /** The first overlay's copy of {@code name}, or null when none has one. */
+    private static byte[] entryOf(List<Path> overlays, String name) throws IOException {
         for (Path overlay : overlays) {
             try (ZipFile zip = new ZipFile(overlay.toFile())) {
-                ZipEntry entry = zip.getEntry(FmlLibraryList.ENTRY);
+                ZipEntry entry = zip.getEntry(name);
                 if (entry != null) {
                     return readAll(zip, entry);
                 }

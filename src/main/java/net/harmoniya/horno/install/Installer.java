@@ -115,8 +115,13 @@ public final class Installer implements Closeable {
         Path temp = Files.createTempDirectory("horno-install");
         try {
             Map<String, String> data = data(libraryDir, minecraftJar, temp);
-            boolean cacheable = !Flags.forceProcessors() && derivedFilesPresent(libraryDir);
-
+            // What a processor with no declared outputs can be skipped on: the
+            // whole chain having finished here before, and its files still there.
+            Receipt receipt = new Receipt(this.jarPath, Downloader.sha1(this.jarPath));
+            boolean cacheable = !Flags.forceProcessors() && receipt.present() && derivedFilesPresent(libraryDir);
+            if (!cacheable) {
+                receipt.withdraw();
+            }
 
             for (Profile.Processor processor : this.profile.processors) {
                 if (!processor.runsOn(SIDE)) {
@@ -134,6 +139,7 @@ public final class Installer implements Closeable {
                 run(processor, data, libraryDir);
                 verify(processor, outputs);
             }
+            receipt.issue();
         } finally {
             deleteTree(temp);
         }
@@ -287,10 +293,10 @@ public final class Installer implements Closeable {
      * <p>A processor that declares {@code outputs} says so itself: the files are
      * there and they hash to what the profile expects. Half of them declare
      * none — including the binary patcher, the expensive one — and for those the
-     * only evidence available is that every file the profile addresses by
-     * coordinate already exists. It is coarse, and deliberately all-or-nothing:
-     * one missing derived file re-runs the whole chain rather than guessing
-     * which half of it is stale.
+     * evidence is the {@link Receipt} of a chain that ran to its end, plus
+     * every file the profile addresses by coordinate still being there. It is
+     * coarse, and deliberately all-or-nothing: one missing derived file re-runs
+     * the whole chain rather than guessing which half of it is stale.
      */
     private boolean satisfied(Profile.Processor processor, Map<String, String> outputs, boolean cacheable) throws IOException {
         if (Flags.forceProcessors()) {
